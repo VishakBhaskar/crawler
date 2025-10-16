@@ -35,7 +35,7 @@ Go to Variables tab and add these:
 PORT=3000
 NODE_ENV=production
 REDIS_URL=${{Redis.REDIS_URL}}
-PROXY_URL=http://lcnsqazd-rotate:03kwkrypuwui@p.webshare.io:80
+PROXY_URL=proxy url
 ```
 
 ### Performance (100K pages/day config)
