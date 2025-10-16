@@ -2,6 +2,7 @@ import Redis from 'ioredis';
 import { config } from './config.js';
 
 let redisClient = null;
+let workerRedisClient = null;
 
 export function getRedisClient() {
     if (!redisClient) {
@@ -36,11 +37,50 @@ export function getRedisClient() {
     return redisClient;
 }
 
+// Separate Redis client for worker to avoid blocking the API with brpop
+export function getWorkerRedisClient() {
+    if (!workerRedisClient) {
+        workerRedisClient = new Redis(config.redisUrl, {
+            maxRetriesPerRequest: 3,
+            retryStrategy(times) {
+                const delay = Math.min(times * 50, 2000);
+                return delay;
+            },
+            reconnectOnError(err) {
+                const targetError = 'READONLY';
+                if (err.message.includes(targetError)) {
+                    return true;
+                }
+                return false;
+            },
+        });
+
+        workerRedisClient.on('error', (err) => {
+            console.error('Worker Redis Client Error:', err);
+        });
+
+        workerRedisClient.on('connect', () => {
+            console.log('✅ Connected to Redis (Worker)');
+        });
+
+        workerRedisClient.on('ready', () => {
+            console.log('✅ Worker Redis Client Ready');
+        });
+    }
+
+    return workerRedisClient;
+}
+
 export async function closeRedis() {
     if (redisClient) {
         await redisClient.quit();
         redisClient = null;
         console.log('Redis connection closed');
+    }
+    if (workerRedisClient) {
+        await workerRedisClient.quit();
+        workerRedisClient = null;
+        console.log('Worker Redis connection closed');
     }
 }
 

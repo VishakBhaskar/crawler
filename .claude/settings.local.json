@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(/tmp/test-crawl.sh:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker cp:*)",
+      "Bash(docker exec:*)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File test-crawl.ps1)",
+      "Bash(for i in {1..10})",
+      "Bash(do echo \"=== Check $i ===\")",
+      "Bash(python:*)",
+      "Bash(done)",
+      "Bash(for i in {1..15})",
+      "Bash(docker restart:*)",
+      "Bash(docker stats:*)",
+      "Bash(docker tag:*)",
+      "Bash(docker push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

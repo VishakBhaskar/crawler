@@ -2,11 +2,13 @@ import { PlaywrightCrawler, Configuration, ProxyConfiguration } from 'crawlee';
 import { launchOptions } from 'camoufox-js';
 import { firefox } from 'playwright';
 import { JobManager } from './job-manager.js';
+import { getWorkerRedisClient } from './redis-client.js';
 import { config } from './config.js';
 
 export class CrawlerWorker {
     constructor() {
-        this.jobManager = new JobManager();
+        // Use separate Redis client for worker to avoid blocking API with brpop
+        this.jobManager = new JobManager(getWorkerRedisClient());
         this.isRunning = false;
         this.currentCrawler = null;
         this.shouldStop = false;
@@ -51,6 +53,15 @@ export class CrawlerWorker {
                       proxyUrls: [config.proxyUrl],
                   })
                 : undefined;
+
+            if (proxyConfiguration) {
+                console.log('🔒 Proxy configured:', config.proxyUrl.replace(/:[^:@]+@/, ':****@'));
+            } else {
+                console.log('⚠️  No proxy configured - crawling without proxy');
+            }
+
+            // Capture jobManager reference for use in requestHandler
+            const jobManager = this.jobManager;
 
             this.currentCrawler = new PlaywrightCrawler(
                 {
@@ -114,10 +125,10 @@ export class CrawlerWorker {
                                 crawledAt: Date.now(),
                             };
 
-                            await this.jobManager.saveResult(job.id, result);
+                            await jobManager.saveResult(job.id, result);
 
                             // Update progress
-                            await this.jobManager.updateJob(job.id, {
+                            await jobManager.updateJob(job.id, {
                                 processedUrls: (job.processedUrls || 0) + 1,
                             });
 
@@ -137,7 +148,7 @@ export class CrawlerWorker {
                     async failedRequestHandler({ request, log }) {
                         log.error(`Request ${request.url} failed too many times.`);
 
-                        await this.jobManager.updateJob(job.id, {
+                        await jobManager.updateJob(job.id, {
                             failedUrls: (job.failedUrls || 0) + 1,
                         });
                     },

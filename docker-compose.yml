@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: crawler-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  crawler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crawler-api
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - PROXY_URL=${PROXY_URL}
+      - MAX_CONCURRENCY=${MAX_CONCURRENCY:-5}
+      - MAX_REQUESTS_PER_MINUTE=${MAX_REQUESTS_PER_MINUTE:-30}
+      - DEFAULT_MAX_REQUESTS=${DEFAULT_MAX_REQUESTS:-100}
+      - MAX_LINKS_PER_PAGE=${MAX_LINKS_PER_PAGE:-3}
+      - PAGE_TIMEOUT=${PAGE_TIMEOUT:-30000}
+      - JOB_TTL=${JOB_TTL:-172800}
+      - RESULTS_TTL=${RESULTS_TTL:-172800}
+      - MAX_JOBS_PER_REQUEST=${MAX_JOBS_PER_REQUEST:-1000}
+      - MAX_BROWSER_INSTANCES=${MAX_BROWSER_INSTANCES:-3}
+      - BROWSER_INSTANCE_TIMEOUT=${BROWSER_INSTANCE_TIMEOUT:-300000}
+      - HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-60000}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - /dev/shm:/dev/shm  # Shared memory for browser
+    shm_size: 2gb
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  redis-data:
+    driver: local

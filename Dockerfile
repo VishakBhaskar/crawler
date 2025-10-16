@@ -35,11 +35,10 @@ RUN apt-get update && \
 COPY package*.json ./
 
 # Install app dependencies
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
-# Install Playwright browsers and Camoufox
-RUN npx playwright install firefox --with-deps && \
-    npx camoufox fetch
+# Install Playwright browsers (as root)
+RUN npx playwright install firefox --with-deps
 
 # Copy source code
 COPY . .
@@ -47,11 +46,15 @@ COPY . .
 # Create a non-root user for better security
 RUN groupadd -r crawler && \
     useradd -r -g crawler -G audio,video crawler && \
-    mkdir -p /home/crawler && \
+    mkdir -p /home/crawler/.cache && \
     chown -R crawler:crawler /app /home/crawler /ms-playwright
 
 # Switch to non-root user
 USER crawler
+
+# Install Camoufox as the crawler user and set permissions
+RUN npx camoufox fetch && \
+    chmod +x /home/crawler/.cache/camoufox/camoufox-bin
 
 # Expose port for Railway
 EXPOSE 3000

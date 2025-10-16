@@ -3,8 +3,8 @@ import { config } from './config.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export class JobManager {
-    constructor() {
-        this.redis = getRedisClient();
+    constructor(redisClient = null) {
+        this.redis = redisClient || getRedisClient();
     }
 
     async createJob(urls, maxRequests) {
