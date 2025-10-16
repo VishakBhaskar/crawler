@@ -86,7 +86,7 @@ This is **CRITICAL** - your crawler won't work without these.
 | `PORT` | `3000` | Port your API listens on |
 | `NODE_ENV` | `production` | Running in production mode |
 | `REDIS_URL` | `${{Redis.REDIS_URL}}` | **IMPORTANT: Use Railway reference (see below)** |
-| `PROXY_URL` | `http://lcnsqazd-rotate:03kwkrypuwui@p.webshare.io:80` | Your Webshare proxy |
+| `PROXY_URL` | `proxy url` | Your Webshare proxy |
 
 **Performance Variables (for 100K pages/day):**
 
