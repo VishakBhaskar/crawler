@@ -1,96 +1,101 @@
-import express from 'express';
-import { PlaywrightCrawler, Configuration, ProxyConfiguration } from 'crawlee';
-import { launchOptions } from 'camoufox-js';
-import { firefox } from 'playwright';
+import { createApp } from './api.js';
+import { CrawlerWorker } from './crawler-worker.js';
+import { getRedisClient, closeRedis } from './redis-client.js';
+import { config } from './config.js';
 
-const app = express();
-app.use(express.json());
+let server;
+let worker;
 
-app.post('/crawl', async (req, res) => {
+async function start() {
     try {
-        const { urls, maxRequests } = req.body;
+        console.log('🚀 Starting Crawlee API Server...');
 
-        if (!urls || !Array.isArray(urls) || urls.length === 0) {
-            return res.status(400).json({ error: 'Please provide an array of URLs to crawl.' });
-        }
+        // Initialize Redis connection
+        const redis = getRedisClient();
+        await redis.ping();
+        console.log('✅ Redis connected');
 
-        // Array to store results in memory
-        const results = [];
-        console.log("🚀 PROXY_URL:", process.env.PROXY_URL);
+        // Create Express app
+        const app = createApp();
 
-
-        // ✅ Proxy setup with username/password
-        const proxyConfiguration = new ProxyConfiguration({
-            proxyUrls: [
-                process.env.PROXY_URL
-            ]
+        // Start server
+        server = app.listen(config.port, () => {
+            console.log(`🌐 Server running on port ${config.port}`);
+            console.log(`📍 Environment: ${config.nodeEnv}`);
+            console.log(`🔗 Health check: http://localhost:${config.port}/health`);
         });
 
-        const crawler = new PlaywrightCrawler(
-            {
-                proxyConfiguration,                     // ✅ use proxy
-                useSessionPool: true,                   // ✅ enable session management
-                sessionPoolOptions: { maxPoolSize: 100 },
-                persistCookiesPerSession: true,
+        // Handle server errors
+        server.on('error', (err) => {
+            console.error('❌ Server error:', err);
+            process.exit(1);
+        });
 
-                maxConcurrency: 10,                     // ✅ concurrency
-                maxRequestsPerMinute: 60,               // ✅ requests per minute
-                maxRequestsPerCrawl: maxRequests || 5,
+        // Start crawler worker
+        worker = new CrawlerWorker();
+        worker.start().catch((error) => {
+            console.error('❌ Worker error:', error);
+        });
 
-                // ✅ Camoufox setup
-                postNavigationHooks: [
-                    async ({ handleCloudflareChallenge }) => {
-                        await handleCloudflareChallenge();
-                    },
-                ],
-                browserPoolOptions: {
-                    useFingerprints: false, // disable to avoid conflict with Camoufox
-                },
-                launchContext: {
-                    launcher: firefox,
-                    launchOptions: await launchOptions({
-                        headless: true,
-                    }),
-                },
-
-                async requestHandler({ request, page, enqueueLinks, log }) {
-                    log.info(`URL: ${request.url}`);
-
-                    const title = await page.title();
-                    log.info(`Title: ${title}`);
-
-                    const fullText = await page.evaluate(() => document.body.innerText);
-                    log.info(`Full Text:\n${fullText}\n----------------------`);
-
-                    results.push({
-                        url: request.url,
-                        title,
-                        fullText
-                    });
-
-                    await page.waitForSelector('a', { timeout: 7000 }).catch(() => {}); 
-
-                    await enqueueLinks({ limit: 3 });
-                },
-
-                failedRequestHandler({ request, log }) {
-                    log.info(`Request ${request.url} failed too many times.`);
-                },
-            },
-            new Configuration({
-                persistStorage: false, // disables any file/disk storage
-            })
-        );
-
-        await crawler.addRequests(urls);
-        await crawler.run();
-
-        res.json(results);
+        console.log('✅ Crawler worker started');
+        console.log('🎉 All systems ready!');
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Crawl failed.' });
+        console.error('❌ Startup error:', error);
+        process.exit(1);
     }
+}
+
+async function shutdown(signal) {
+    console.log(`\n${signal} received. Starting graceful shutdown...`);
+
+    const shutdownTimeout = setTimeout(() => {
+        console.error('⚠️  Graceful shutdown timed out, forcing exit');
+        process.exit(1);
+    }, 30000); // 30 second timeout
+
+    try {
+        // Stop accepting new requests
+        if (server) {
+            await new Promise((resolve) => {
+                server.close(resolve);
+            });
+            console.log('✅ HTTP server closed');
+        }
+
+        // Stop crawler worker
+        if (worker) {
+            await worker.stop();
+            console.log('✅ Crawler worker stopped');
+        }
+
+        // Close Redis connection
+        await closeRedis();
+        console.log('✅ Redis connection closed');
+
+        clearTimeout(shutdownTimeout);
+        console.log('👋 Graceful shutdown completed');
+        process.exit(0);
+    } catch (error) {
+        console.error('❌ Error during shutdown:', error);
+        clearTimeout(shutdownTimeout);
+        process.exit(1);
+    }
+}
+
+// Handle shutdown signals
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    shutdown('UNCAUGHT_EXCEPTION');
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Crawler API running on port ${PORT}`)).on('error', (err) => console.error("Server failed:", err));
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    shutdown('UNHANDLED_REJECTION');
+});
+
+// Start the application
+start();

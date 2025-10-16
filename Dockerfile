@@ -28,23 +28,37 @@ RUN apt-get update && \
     libappindicator3-1 \
     xdg-utils \
     wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files first (layer caching)
 COPY package*.json ./
 
 # Install app dependencies
-RUN npm install --omit=dev
+RUN npm ci --only=production
 
 # Install Playwright browsers and Camoufox
-RUN npx playwright install --with-deps && \
+RUN npx playwright install firefox --with-deps && \
     npx camoufox fetch
 
 # Copy source code
 COPY . .
 
+# Create a non-root user for better security
+RUN groupadd -r crawler && \
+    useradd -r -g crawler -G audio,video crawler && \
+    mkdir -p /home/crawler && \
+    chown -R crawler:crawler /app /home/crawler /ms-playwright
+
+# Switch to non-root user
+USER crawler
+
 # Expose port for Railway
 EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
 
 # Run the app
 CMD ["node", "src/main.js"]
