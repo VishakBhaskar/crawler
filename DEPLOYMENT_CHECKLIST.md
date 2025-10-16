@@ -44,7 +44,7 @@ Print this or keep it open while deploying. Check off each item as you complete 
 - [ ] `PORT` = `3000`
 - [ ] `NODE_ENV` = `production`
 - [ ] `REDIS_URL` = `${{Redis.REDIS_URL}}` ⚠️ IMPORTANT: Use this exact format
-- [ ] `PROXY_URL` = `http://lcnsqazd-rotate:03kwkrypuwui@p.webshare.io:80`
+- [ ] `PROXY_URL` = `proxy URL`
 
 ### Performance Variables
 - [ ] `MAX_CONCURRENCY` = `12`
